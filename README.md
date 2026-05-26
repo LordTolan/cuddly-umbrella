@@ -6,7 +6,8 @@
 
 ```
 ├── backend/    — Node.js API (Express, Prisma, BullMQ, Firebase Auth)
-└── android/    — Android app (Kotlin, Jetpack Compose, Material 3)
+├── android/    — Android app (Kotlin, Jetpack Compose, Material 3)
+└── web/        — React web app (Vite, Tailwind, Recharts, Firebase Auth)
 ```
 
 ## Backend
