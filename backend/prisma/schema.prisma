@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Sites ───────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  firebaseUid String @unique @map("firebase_uid")
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sites     Site[]
+
+  @@map("users")
+}
+
+model Site {
+  id              String  @id @default(uuid())
+  userId          String  @map("user_id")
+  name            String
+  address         String?
+  utilityProvider String  @default("Duke Energy") @map("utility_provider")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  devices Device[]
+  bills   UtilityBill[]
+
+  @@map("sites")
+}
+
+// ─── Devices ─────────────────────────────────────────────────────
+
+enum DeviceType {
+  EMPORIA_VUE
+  SMA_INVERTER
+}
+
+model Device {
+  id           String     @id @default(uuid())
+  siteId       String     @map("site_id")
+  type         DeviceType
+  name         String
+  serialNumber String?    @map("serial_number")
+  apiToken     String?    @map("api_token") // encrypted credential
+  apiConfig    Json?      @map("api_config") // extra config (account IDs, etc.)
+  isActive     Boolean    @default(true) @map("is_active")
+  lastSyncAt   DateTime?  @map("last_sync_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  site              Site              @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  consumptionData   ConsumptionData[]
+  solarData         SolarData[]
+
+  @@map("devices")
+}
+
+// ─── Energy Data (Time-Series) ───────────────────────────────────
+
+model ConsumptionData {
+  id        String   @id @default(uuid())
+  deviceId  String   @map("device_id")
+  timestamp DateTime
+  watts     Float    // instantaneous watts
+  kwh       Float    // kWh for the interval
+  channel   String?  // circuit name (e.g., "Main", "Barn", "HVAC")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, timestamp])
+  @@index([timestamp])
+  @@map("consumption_data")
+}
+
+model SolarData {
+  id           String   @id @default(uuid())
+  deviceId     String   @map("device_id")
+  timestamp    DateTime
+  kwGenerated  Float    @map("kw_generated") // instantaneous kW
+  kwhGenerated Float    @map("kwh_generated") // kWh for the interval
+  inverterStatus String? @map("inverter_status")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, timestamp])
+  @@index([timestamp])
+  @@map("solar_data")
+}
+
+// ─── Utility Billing ─────────────────────────────────────────────
+
+model UtilityBill {
+  id             String   @id @default(uuid())
+  siteId         String   @map("site_id")
+  periodStart    DateTime @map("period_start")
+  periodEnd      DateTime @map("period_end")
+  totalKwh       Float    @map("total_kwh")
+  totalCost      Float    @map("total_cost")
+  peakKwh        Float?   @map("peak_kwh")
+  offPeakKwh     Float?   @map("off_peak_kwh")
+  demandKw       Float?   @map("demand_kw")
+  sourceFile     String?  @map("source_file") // uploaded PDF/CSV filename
+  rawData        Json?    @map("raw_data")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, periodStart])
+  @@map("utility_bills")
+}
+
+// ─── Alerts ──────────────────────────────────────────────────────
+
+enum AlertType {
+  SOLAR_OFFLINE
+  SOLAR_UNDERPERFORMANCE
+  BILLING_SPIKE
+  EXCESSIVE_PEAK
+  PHANTOM_LOAD
+  HIGH_BASELOAD
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model Alert {
+  id        String        @id @default(uuid())
+  siteId    String        @map("site_id")
+  type      AlertType
+  severity  AlertSeverity
+  title     String
+  message   String
+  data      Json?
+  readAt    DateTime?     @map("read_at")
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@index([siteId, createdAt])
+  @@map("alerts")
+}
